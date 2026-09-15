@@ -262,6 +262,23 @@
       "outputs": [],
       "passThroughEnv": ["*"]
     },
+    "@bb/desktop#smoke:packaged-npm": {
+      "cache": false,
+      "outputs": [],
+      "passThroughEnv": ["BB_DESKTOP_RELEASE_CHANNEL"]
+    },
+    "@bb/desktop#package": {
+      "dependsOn": ["bb-app#build", "@bb/desktop#build"],
+      "cache": false,
+      "outputs": ["release/**"],
+      "passThroughEnv": ["*"]
+    },
+    "@bb/desktop#package:linux": {
+      "dependsOn": ["bb-app#build", "@bb/desktop#build"],
+      "cache": false,
+      "outputs": ["release/**"],
+      "passThroughEnv": ["*"]
+    },
     "@bb/desktop#smoke:appimage-lifecycle": {
       "cache": false,
       "outputs": [],
@@ -925,6 +942,9 @@
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-scheduled-send#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
+    },
+    "bb-plugin-drafts#typecheck": {
       "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"]
     },
     "bb-plugin-side-chat#typecheck": {
