@@ -1,10 +1,13 @@
+import { installDefaultEnvironmentProviders } from "./environment-provider.js";
+import { setPluginEnvironmentProviderBridge } from "../../src/services/plugins/plugin-environment-provider-registry.js";
+import { clearAllThreadProvisionSchedules } from "../../src/services/threads/thread-startup-store.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "@hono/node-server";
 import type { AddressInfo } from "node:net";
-import { createConnection, type DbConnection } from "@bb/db";
-import { defaultFeatureFlags, type HostType } from "@bb/domain";
+import { createConnection, getAppSettings, type DbConnection } from "@bb/db";
+import { defaultFeatureFlags } from "@bb/domain";
 import { initDb } from "../../src/db.js";
 import { createApp } from "../../src/server.js";
 import { PendingInteractionLifecycle } from "../../src/services/interactions/pending-interactions.js";
@@ -27,7 +30,6 @@ import { createNoopTelemetryService } from "../../src/services/system/telemetry.
 import { TerminalSessionLifecycle } from "../../src/services/terminals/terminal-session-lifecycle.js";
 import { createLifecycleDedupers } from "../../src/lifecycle-dedupers.js";
 import type { ServerAppDeps, ServerRuntimeConfig } from "../../src/types.js";
-import { MANAGED_ENVIRONMENT_RETIRE_GRACE_MS } from "../../src/constants.js";
 import type { NotificationHub } from "../../src/ws/hub.js";
 import { NotificationHub as NotificationHubImpl } from "../../src/ws/hub.js";
 import { WatchInterestCoordinator } from "../../src/ws/watch-interests.js";
@@ -78,38 +80,37 @@ export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   }[];
 };
 
-export const testLogger = {
-  debug(): void {},
-  error(): void {},
-  info(): void {},
-  warn(): void {},
-};
+function createTestLogger() {
+  return {
+    debug(): void {},
+    error(): void {},
+    info(): void {},
+    warn(): void {},
+  };
+}
+
+export const testLogger = createTestLogger();
 
 interface TestDaemonKeyParts {
   hostId: string;
-  hostType: HostType;
 }
 
 function encodeTestDaemonKey(args: TestDaemonKeyParts): string {
-  return `${TEST_MACHINE_KEY_PREFIX}:${args.hostType}:${args.hostId}`;
+  return `${TEST_MACHINE_KEY_PREFIX}:${args.hostId}`;
 }
 
 function decodeTestDaemonKey(token: string): TestDaemonKeyParts | null {
   const parts = token.split(":");
-  if (parts.length !== 3 || parts[0] !== TEST_MACHINE_KEY_PREFIX) {
+  if (parts.length !== 2 || parts[0] !== TEST_MACHINE_KEY_PREFIX) {
     return null;
   }
 
-  const hostType = parts[1];
-  const hostId = parts[2];
-  if (hostType !== "persistent" || hostId.length === 0) {
+  const hostId = parts[1];
+  if (hostId.length === 0) {
     return null;
   }
 
-  return {
-    hostId,
-    hostType,
-  };
+  return { hostId };
 }
 
 export function createTestDaemonHostKey(
@@ -117,7 +118,6 @@ export function createTestDaemonHostKey(
 ): string {
   return encodeTestDaemonKey({
     hostId: args.hostId ?? "host-1",
-    hostType: args.hostType ?? "persistent",
   });
 }
 
@@ -140,13 +140,22 @@ export async function createTestAppHarness(
     seedFirstPartyProviders = true,
     ...configOverrides
   } = overrides;
+  const logger = createTestLogger();
   const dataDir = await mkdtemp(join(tmpdir(), "bb-server-test-"));
   const db = createTestDb();
   const hub = new NotificationHubImpl();
   const watchInterests = new WatchInterestCoordinator({ db, hub });
   const sharedPorts = new HostSharedPortCoordinator({ db, hub });
   const workspaceReadCaches = new WorkspaceReadCaches({ hub });
-  const providerRegistry = createProviderRegistryService({});
+  const providerRegistry = createProviderRegistryService({
+    readUserProviderPreferences: () => {
+      const settings = getAppSettings(db);
+      return {
+        providerOrder: settings.providerOrder,
+        defaultProviderId: settings.defaultProviderId,
+      };
+    },
+  });
   const pluginHostArtifacts = new PluginHostArtifactRegistry();
   const providerNativeRoots = createProviderNativeRootsCache(
     nativeRootsClock === undefined ? {} : { now: nativeRootsClock },
@@ -173,7 +182,7 @@ export async function createTestAppHarness(
   const machineAuth = await createMachineAuthService({
     dataDir,
     db,
-    logger: testLogger,
+    logger,
   });
   await machineAuth.ensureReady();
   const testMachineAuth = {
@@ -182,7 +191,7 @@ export async function createTestAppHarness(
       const testKey = decodeTestDaemonKey(token);
       if (testKey) {
         return {
-          keyId: `test:${testKey.hostType}:${testKey.hostId}`,
+          keyId: `test:${testKey.hostId}`,
           metadata: testKey,
         };
       }
@@ -201,7 +210,6 @@ export async function createTestAppHarness(
     inferenceFallbackModel: "test/mock-fallback-model",
     inferenceModel: "test/mock-model",
     isDevelopment: true,
-    managedEnvironmentRetireGraceMs: MANAGED_ENVIRONMENT_RETIRE_GRACE_MS,
     openAiApiKey: "test-openai-key",
     serverPort: 3334,
     sharedSkillRoots: { user: [], project: [] },
@@ -217,13 +225,13 @@ export async function createTestAppHarness(
     config,
     db,
     hub,
-    logger: testLogger,
+    logger,
     openTimeoutMs: 50,
   });
   const bbAppManagedConfig = await createBbAppManagedConfigReloader({
     config,
     hub,
-    logger: testLogger,
+    logger,
   });
   const telemetry = createNoopTelemetryService();
   const skillTreeRegistry = new SkillTreeRegistry();
@@ -233,7 +241,7 @@ export async function createTestAppHarness(
     db,
     hub,
     lifecycleDedupers,
-    logger: testLogger,
+    logger,
     machineAuth: testMachineAuth,
     providerRegistry,
     pluginHostArtifacts,
@@ -247,7 +255,7 @@ export async function createTestAppHarness(
     appVersionService ??
     createAppVersionService({
       config,
-      logger: testLogger,
+      logger,
     });
   const deps: ServerAppDeps = {
     appVersion,
@@ -256,7 +264,7 @@ export async function createTestAppHarness(
     db,
     hub,
     lifecycleDedupers,
-    logger: testLogger,
+    logger,
     machineAuth: testMachineAuth,
     pendingInteractions,
     providerRegistry,
@@ -271,6 +279,7 @@ export async function createTestAppHarness(
     workspaceReadCaches,
   };
   const { app, pluginCatalogService, pluginService } = createApp(deps);
+  installDefaultEnvironmentProviders();
 
   return {
     app,
@@ -281,6 +290,8 @@ export async function createTestAppHarness(
     pluginService,
     pluginCatalogService,
     async cleanup(): Promise<void> {
+      clearAllThreadProvisionSchedules();
+      setPluginEnvironmentProviderBridge(undefined);
       await pluginService.stop();
       await rm(dataDir, { recursive: true, force: true });
     },

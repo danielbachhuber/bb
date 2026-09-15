@@ -14,6 +14,42 @@ describe("bb settings commands", () => {
   const register: CommandRegistrar = (program) =>
     registerSettingsCommands(program, () => "http://server");
 
+  it("sets and resets a plugin shortcut while preserving other overrides", async () => {
+    const other = { command: "plugin:other/open", shortcut: null };
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        keybindingOverrides: [other],
+      })),
+      "v1.settings.keyboard.$put": put,
+    });
+    await runCommand(
+      ["settings", "keyboard", "set", "plugin:example/open", "Mod+Shift+I"],
+      register,
+    );
+    expect(put).toHaveBeenLastCalledWith({
+      json: [
+        other,
+        {
+          command: "plugin:example/open",
+          shortcut: {
+            key: "I",
+            mod: true,
+            meta: false,
+            control: false,
+            alt: false,
+            shift: true,
+          },
+        },
+      ],
+    });
+    await runCommand(
+      ["settings", "keyboard", "reset", "plugin:example/open"],
+      register,
+    );
+    expect(put).toHaveBeenLastCalledWith({ json: [other] });
+  });
+
   it("updates one general setting while preserving the full contract", async () => {
     const put = vi.fn(async ({ json }) => json);
     stubServerApi({
@@ -25,12 +61,33 @@ describe("bb settings commands", () => {
     });
 
     await runCommand(
-      ["settings", "general", "showUnhandledProviderEvents", "true"],
+      ["settings", "general", "showDiagnosticEvents", "true"],
       register,
     );
 
     expect(put).toHaveBeenCalledWith({
-      json: { ...defaultAppSettings, showUnhandledProviderEvents: true },
+      json: { ...defaultAppSettings, showDiagnosticEvents: true },
+    });
+  });
+
+  it("disables automatic machine Git credentials despite the legacy response alias", async () => {
+    const put = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: {
+          ...defaultAppSettings,
+          showUnhandledProviderEvents: false,
+        },
+        experiments: defaultExperiments,
+      })),
+      "v1.settings.general.$put": put,
+    });
+    await runCommand(
+      ["settings", "general", "machineGitCredentialsEnabled", "false"],
+      register,
+    );
+    expect(put).toHaveBeenCalledWith({
+      json: { ...defaultAppSettings, machineGitCredentialsEnabled: false },
     });
   });
 
@@ -128,6 +185,26 @@ describe("bb settings commands", () => {
     });
   });
 
+  it("enables the multi-machine picker experiment", async () => {
+    const updateExperiments = vi.fn(async ({ json }) => json);
+    stubServerApi({
+      "v1.system.config.$get": vi.fn(async () => ({
+        generalSettings: defaultAppSettings,
+        experiments: defaultExperiments,
+      })),
+      "v1.settings.experiments.$put": updateExperiments,
+    });
+
+    await runCommand(
+      ["settings", "experiment", "multiMachinePicker", "true"],
+      register,
+    );
+
+    expect(updateExperiments).toHaveBeenCalledWith({
+      json: { ...defaultExperiments, multiMachinePicker: true },
+    });
+  });
+
   it("reads usage from a selected machine", async () => {
     const getUsage = vi.fn(async () => ({
       codex: { status: "unauthenticated" },
@@ -139,7 +216,6 @@ describe("bb settings commands", () => {
         {
           id: "host-remote",
           name: "builder",
-          type: "persistent",
           status: "connected",
           lastSeenAt: 1,
           lastRejectedProtocolVersion: null,

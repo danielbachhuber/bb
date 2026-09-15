@@ -9,6 +9,8 @@ import {
   bypassInputSchema,
   codexLoginPollInputSchema,
   loginCompleteInputSchema,
+  modelFamilySchema,
+  parentModeSchema,
   tokenRotateInputSchema,
   routingSetInputSchema,
   type AccountPoolConfig,
@@ -19,6 +21,7 @@ import {
   type LimitWindow,
   type ModelFamily,
   type PoolStatus,
+  type PoolStatusReport,
 } from "./contracts.js";
 import type { PoolOperations } from "./operations.js";
 import type { ClaudeOAuthLogin } from "./oauth-login.js";
@@ -45,14 +48,17 @@ const HELP = [
   "  bb pool account disable <id>",
   "  bb pool account priority <id> <n>",
   "  bb pool account reorder <claude|codex> <id>...",
+  "  bb pool account refresh <id>",
   "  bb pool status [--json]",
   "  bb pool routing <claude|codex> [--off]",
   "  bb pool config",
-  "  bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>",
+  "  bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|parentMode> <value>",
+  "  bb pool parent [proxy|isolate]",
   "  bb pool token rotate --machine <id-or-name>",
   "  bb pool bypass <thread-id> [--off]",
   "",
   "Accounts run sequentially by priority, then order added. The current fallback stays active until unavailable.",
+  "When this bb server runs inside another bb server's thread, parent proxy routes its pooled traffic through that parent; isolate neutralises the inherited routing.",
   "Reorder includes every account for the provider and changes the next failover sequence; existing conversations stay pinned.",
 ].join("\n");
 
@@ -96,14 +102,6 @@ function formatUtilization(value: number | null): string {
   return value === null ? "-" : `${Math.round(value * 100)}%`;
 }
 
-const MODEL_FAMILIES: ModelFamily[] = [
-  "fable",
-  "sonnet",
-  "opus",
-  "haiku",
-  "other",
-];
-
 function familyLabel(family: ModelFamily): string {
   return family[0]?.toUpperCase() + family.slice(1);
 }
@@ -138,13 +136,14 @@ function formatFamilyQuota(quota: FamilyQuota | null): string {
 
 function formatAccounts(accounts: readonly AccountSummary[]): string {
   if (accounts.length === 0) return "No accounts configured.";
-  const families = MODEL_FAMILIES.filter((family) =>
+  const families = modelFamilySchema.options.filter((family) =>
     accounts.some((account) => account.familyWeekly[family] !== null),
   );
   return [
     [
       "ID",
       "Label",
+      "Email",
       "Provider",
       "Kind",
       "Enabled",
@@ -161,6 +160,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
       [
         account.id,
         account.label,
+        account.email ?? "-",
         account.provider,
         account.kind,
         String(account.enabled),
@@ -179,7 +179,7 @@ function formatAccounts(accounts: readonly AccountSummary[]): string {
   ].join("\n");
 }
 
-function formatStatus(status: PoolStatus): string {
+function formatStatus(status: PoolStatusReport): string {
   return [
     `Route: ${status.route}`,
     `Accepting: ${status.accepting}`,
@@ -211,6 +211,19 @@ function formatConfig(config: AccountPoolConfig): string {
     `anthropicUpstreamBaseUrl: ${config.anthropicUpstreamBaseUrl}`,
     `codexUpstreamBaseUrl: ${config.codexUpstreamBaseUrl}`,
     `switchThreshold: ${config.switchThreshold}`,
+    `parentMode: ${config.parentMode}`,
+  ].join("\n");
+}
+
+function formatParent(parent: PoolStatus["parent"]): string {
+  if (parent === null) {
+    return "No parent bb server Account Pooler was detected for this instance.";
+  }
+  return [
+    `parent: ${parent.baseUrl}`,
+    `mode: ${parent.mode}`,
+    `parentServes.claude: ${parent.availability.claude}`,
+    `parentServes.codex: ${parent.availability.codex}`,
   ].join("\n");
 }
 
@@ -234,8 +247,11 @@ function parseConfigUpdate(
       switchThreshold: Number(value),
     });
   }
+  if (key === "parentMode") {
+    return accountPoolConfigSetInputSchema.parse({ parentMode: value });
+  }
   throw new Error(
-    "Config key must be anthropicUpstreamBaseUrl, codexUpstreamBaseUrl, or switchThreshold.",
+    "Config key must be anthropicUpstreamBaseUrl, codexUpstreamBaseUrl, switchThreshold, or parentMode.",
   );
 }
 
@@ -304,6 +320,11 @@ export function registerPoolCli(
         usage: "bb pool account reorder <claude|codex> <id>...",
       },
       {
+        name: "account-refresh",
+        summary: "Refresh one account's observed usage",
+        usage: "bb pool account refresh <id>",
+      },
+      {
         name: "status",
         summary: "Show hub, machine token, routing, and account status",
         usage: "bb pool status [--json]",
@@ -322,7 +343,13 @@ export function registerPoolCli(
         name: "config-set",
         summary: "Update one Account Pooler routing configuration value",
         usage:
-          "bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold> <value>",
+          "bb pool config set <anthropicUpstreamBaseUrl|codexUpstreamBaseUrl|switchThreshold|parentMode> <value>",
+      },
+      {
+        name: "parent",
+        summary:
+          "Show or set how this instance uses a parent bb server's Account Pooler",
+        usage: "bb pool parent [proxy|isolate]",
       },
       {
         name: "token-rotate",
@@ -367,6 +394,13 @@ export function registerPoolCli(
             exitCode: 0,
             stdout: `Updated ${input.provider} account order.\n`,
           };
+        }
+        if (argv[0] === "account" && argv[1] === "refresh") {
+          if (argv.length !== 3) throw new Error(HELP);
+          const { id } = accountIdInputSchema.parse({ id: argv[2] });
+          if ((await operations.refreshUsage(id)) === null)
+            throw new Error("Account not found.");
+          return { exitCode: 0, stdout: `Refreshed usage for ${id}.\n` };
         }
         if (argv[0] === "account" && argv[1] === "add") {
           const flags = parseFlags(
@@ -543,7 +577,15 @@ export function registerPoolCli(
         }
         if (argv[0] === "status") {
           const flags = parseFlags(argv.slice(1), ["json"], []);
-          const status = await operations.status();
+          const [poolStatus, routedThreadsWithoutLocalLogin] =
+            await Promise.all([
+              operations.status(),
+              operations.routedThreadsWithoutLocalLogin(),
+            ]);
+          const status: PoolStatusReport = {
+            ...poolStatus,
+            routedThreadsWithoutLocalLogin,
+          };
           return {
             exitCode: 0,
             stdout: flags.booleans.has("json")
@@ -570,6 +612,19 @@ export function registerPoolCli(
           if (argv.length !== 4) throw new Error(HELP);
           const next = await config.set(parseConfigUpdate(argv[2], argv[3]));
           return { exitCode: 0, stdout: `${formatConfig(next)}\n` };
+        }
+        if (argv[0] === "parent") {
+          if (argv.length === 1) {
+            const status = await operations.status();
+            return { exitCode: 0, stdout: `${formatParent(status.parent)}\n` };
+          }
+          if (argv.length !== 2) throw new Error(HELP);
+          const parentMode = parentModeSchema.parse(argv[1]);
+          const next = await config.set({ parentMode });
+          return {
+            exitCode: 0,
+            stdout: `Set the Account Pooler parent mode to ${next.parentMode}.\n`,
+          };
         }
         if (argv[0] === "token" && argv[1] === "rotate") {
           const flags = parseFlags(argv.slice(2), [], ["machine"]);
