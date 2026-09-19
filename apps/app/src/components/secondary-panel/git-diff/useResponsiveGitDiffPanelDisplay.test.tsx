@@ -94,6 +94,32 @@ it("keeps a stored split choice on a panel narrower than the breakpoint", () => 
   expect(result.current.gitDiffDisplayMode).toBe("split");
 });
 
+it("keeps an explicit choice across closing and reopening the panel", () => {
+  const { result, rerender } = renderHook(
+    (props: { isSecondaryPanelOpen: boolean }) =>
+      useResponsiveGitDiffPanelDisplay(props),
+    { initialProps: { isSecondaryPanelOpen: true } },
+  );
+
+  act(() => {
+    result.current.handleSecondaryPanelWidthChange(WIDE_WIDTH_PX);
+  });
+  act(() => {
+    result.current.handleGitDiffDisplayModeChange("unified");
+  });
+
+  rerender({ isSecondaryPanelOpen: false });
+  act(() => {
+    result.current.handleSecondaryPanelWidthChange(WIDE_WIDTH_PX);
+  });
+  rerender({ isSecondaryPanelOpen: true });
+  act(() => {
+    result.current.handleSecondaryPanelWidthChange(WIDE_WIDTH_PX);
+  });
+
+  expect(result.current.gitDiffDisplayMode).toBe("unified");
+});
+
 it("restores the stored display mode on a fresh mount", () => {
   const first = renderDisplay();
   act(() => {

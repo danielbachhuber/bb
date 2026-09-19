@@ -31,12 +31,14 @@ vi.mock("@/components/sidebar/AppSidebar", () => ({
 }));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
+  useUiPreferences: () => ({ data: undefined, isError: false }),
   useSystemConfig: () => ({
     data: {
       experiments: {
         changelogPreview: false,
         mobileApp: false,
         multiMachinePicker: false,
+        serverMove: false,
         sidebarProgressiveDisclosure: false,
         timelineWindowing: false,
       },
