@@ -66,6 +66,7 @@ export default definePluginApp((app) => {
       },
     ],
     experimental_sidebarAccessory: OpenIssueCount,
+    experimental_sidebar: "collapsed",
   });
   app.slots.threadPanelAction({
     id: "issue",

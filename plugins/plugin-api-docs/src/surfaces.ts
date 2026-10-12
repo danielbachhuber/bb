@@ -53,6 +53,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Build a whole page, such as a dashboard, a board, or an inbox",
           "Give the page a URL that can be shared and works with back and forward",
           "Add fixed tabs beside Browser and Terminal, and open terminals it started in any folder",
+          "Collapse bb's sidebar to its rail while the page shows, and get it back when the user leaves",
         ],
         apiSymbols: [
           "PluginNavPanelRegistration",

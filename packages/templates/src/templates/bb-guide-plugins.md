@@ -721,7 +721,11 @@ remainder arrives as the component's subPath prop for panel-internal deep
 links; the host always renders the shared plugin title bar and the component
 owns a zero-padding full-bleed body, including its scrolling; the optional
 experimental_sidebarAccessory field is accepted, but no host surface mounts it
-because the rail is icon-only),
+because the rail is icon-only; optional experimental_sidebar: "collapsed"
+collapses the app sidebar to its navigation rail while the page shows,
+restores the user's own state when they leave, never writes the collapse into
+their saved preference, stops forcing it once they open the sidebar during a
+visit, and leaves the compact drawer alone),
 threadPanelAction
 (a thread-only entry in an existing thread's right-panel new-tab Actions list;
 it is never offered on root compose, and its run() can

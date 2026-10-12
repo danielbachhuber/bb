@@ -971,6 +971,40 @@ describe("loadPluginApp", () => {
     );
   });
 
+  it("captures a nav panel sidebar mode and rejects an unknown one", async () => {
+    const captured = await loadPluginApp(
+      definePluginApp((builder) => {
+        builder.slots.navPanel({
+          id: "now",
+          title: "Now",
+          icon: "Clock",
+          path: "now",
+          component: Panel,
+          experimental_sidebar: "collapsed",
+        });
+      }),
+    );
+
+    expect(captured.navPanels[0]?.experimental_sidebar).toBe("collapsed");
+
+    await expect(
+      loadPluginApp(
+        definePluginApp((builder) => {
+          builder.slots.navPanel({
+            id: "now",
+            title: "Now",
+            icon: "Clock",
+            path: "now",
+            component: Panel,
+            experimental_sidebar: "hidden" as never,
+          });
+        }),
+      ),
+    ).rejects.toThrow(
+      '"experimental_sidebar" must be "default" or "collapsed" when set',
+    );
+  });
+
   it("validates and captures nav panel fixed tabs", async () => {
     function Navigation({ subPath }: PluginNavPanelProps) {
       return <span>{subPath}</span>;

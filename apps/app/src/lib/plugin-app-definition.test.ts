@@ -1055,6 +1055,21 @@ describe("collectPluginAppRegistrations", () => {
       /"experimental_sidebarAccessory" must be a React component/,
     ],
     [
+      "nav panel with an unknown experimental sidebar mode",
+      () =>
+        definePluginApp((app) => {
+          app.slots.navPanel({
+            id: "x",
+            title: "X",
+            icon: "columns",
+            path: "x",
+            component: Component,
+            experimental_sidebar: "hidden" as never,
+          });
+        }),
+      /"experimental_sidebar" must be "default" or "collapsed" when set/,
+    ],
+    [
       "message directive with uppercase id",
       () =>
         definePluginApp((app) => {
@@ -1135,6 +1150,24 @@ describe("collectPluginAppRegistrations", () => {
       collectPluginAppRegistrations(definition).navPanels[0],
     ).toMatchObject({
       headerContent: Accessory,
+    });
+  });
+
+  it("keeps an experimental_sidebar registration", () => {
+    const definition = definePluginApp((app) => {
+      app.slots.navPanel({
+        id: "now",
+        title: "Now",
+        icon: "clock",
+        path: "now",
+        component: Component,
+        experimental_sidebar: "collapsed",
+      });
+    });
+    expect(
+      collectPluginAppRegistrations(definition).navPanels[0],
+    ).toMatchObject({
+      experimental_sidebar: "collapsed",
     });
   });
 

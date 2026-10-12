@@ -64,6 +64,7 @@ import {
 import { PluginAppOverlays } from "@/components/plugin/PluginAppOverlays";
 import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
 import {
+  chromeKey,
   usePluginNavPanelChrome,
   type PluginNavPanelChrome,
 } from "@/lib/plugin-nav-panel-chrome";
@@ -180,21 +181,44 @@ const sidebarOpenAtom = atomWithStorage<boolean>(
 interface SidebarStateBridgeProps {
   framed: boolean;
   children: ReactNode;
+  collapsedPanelKey: string | null;
 }
 
 type SidebarResizeMouseEvent = ReactMouseEvent<HTMLDivElement>;
 type SidebarOpenChangeHandler = (open: boolean) => void;
 
-function SidebarStateBridge({ framed, children }: SidebarStateBridgeProps) {
-  const [open, setOpen] = useAtom(sidebarOpenAtom);
+interface CollapsedPanelSidebarVisit {
+  panelKey: string | null;
+  open: boolean | null;
+}
+
+function SidebarStateBridge({
+  framed,
+  children,
+  collapsedPanelKey,
+}: SidebarStateBridgeProps) {
+  const [storedOpen, setStoredOpen] = useAtom(sidebarOpenAtom);
   const sidebarWidth = useAtomValue(sidebarWidthAtom);
   const sidebarLiveWidth = useAtomValue(sidebarLiveWidthAtom);
+  const [visit, setVisit] = useState<CollapsedPanelSidebarVisit>({
+    panelKey: collapsedPanelKey,
+    open: null,
+  });
+  if (visit.panelKey !== collapsedPanelKey) {
+    setVisit({ panelKey: collapsedPanelKey, open: null });
+  }
+  const visitOpen = visit.panelKey === collapsedPanelKey ? visit.open : null;
+  const open = collapsedPanelKey === null ? storedOpen : (visitOpen ?? false);
   const handleOpenChange = useCallback<SidebarOpenChangeHandler>(
     (nextOpen) => {
-      setOpen(nextOpen);
+      if (collapsedPanelKey === null) {
+        setStoredOpen(nextOpen);
+      } else {
+        setVisit({ panelKey: collapsedPanelKey, open: nextOpen });
+      }
       window.requestAnimationFrame(dispatchBrowserViewBoundsSync);
     },
-    [setOpen],
+    [collapsedPanelKey, setStoredOpen],
   );
   useAppCommandHandler("sidebar.toggle", () => {
     handleOpenChange(!open);
@@ -555,6 +579,10 @@ export function AppLayout({ children }: AppLayoutProps) {
   const pluginPanel = pluginPanelEntry?.panel ?? undefined;
   const pluginPanelChrome = pluginPanelEntry?.chrome;
   const pluginPanelSubPath = pluginPanelMatch?.params["*"] ?? "";
+  const collapsedPanelKey =
+    pluginPanelChrome?.sidebar === "collapsed"
+      ? chromeKey(pluginPanelChrome)
+      : null;
   const sidebarNavigationQuery = useSidebarNavigation();
   const projects = useMemo(
     () => sidebarNavigationQuery.data?.projects.map(stripProjectThreads),
@@ -820,7 +848,10 @@ export function AppLayout({ children }: AppLayoutProps) {
       <ProjectActionsProvider>
         <ThreadTitleMentionResourcesProvider {...titleMentionResources}>
           <ThreadActionsProvider>
-            <SidebarStateBridge framed={usesDesktopChrome}>
+            <SidebarStateBridge
+              framed={usesDesktopChrome}
+              collapsedPanelKey={collapsedPanelKey}
+            >
               {backToAppRoutePath !== null && !isSidebarResizing ? (
                 <BackToAppCommandHandler routePath={backToAppRoutePath} />
               ) : null}

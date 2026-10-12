@@ -93,7 +93,7 @@ Slot props contracts (versioned, additive-only):
   back/forward then walks panel-internal history (prefer this over hash
   routing).
   Registration:
-  `{ id, title, icon, path, component, fixedTabs?, experimental_sidebarAccessory?, headerContent? }`.
+  `{ id, title, icon, path, component, fixedTabs?, experimental_sidebarAccessory?, experimental_sidebar?, headerContent? }`.
   BB automatically wraps every plugin page in the same host-owned App panel
   used by New thread and thread pages. The page component supplies only its
   main body; it must not mount a second panel layout or register Browser and
@@ -150,6 +150,14 @@ target? })`. Inside the fixed-tab component,
   a live count or short status beside the panel's navigation entry. The SDK
   accepts it, but no host surface mounts it, because the navigation rail is
   icon-only. Experimental: see `docs/api_to_audit.md`.
+  `experimental_sidebar: "collapsed"` asks BB to collapse the app sidebar to
+  its navigation rail while the page is showing, for a page that wants nearly
+  the full window width; the default is `"default"`, which leaves the sidebar
+  alone. BB restores whatever sidebar state the user had when they leave the
+  page and never writes the forced collapse into their saved sidebar
+  preference. If the user opens the sidebar while on the page, BB stops
+  collapsing it for the rest of that visit. Compact viewports keep their
+  drawer. Experimental: see `docs/api_to_audit.md`.
   The host renders your compact plugin icon + `title` into the SHARED app
   header (the same title bar as Settings pages) with your optional
   `headerContent` component as the header actions on the right — so do NOT
