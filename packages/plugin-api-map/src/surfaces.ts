@@ -75,6 +75,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Render any React you write across that whole area",
           "Get its own URL, so the page can be linked to and bb's back and forward buttons work",
           "Register tabs in the panel to the right of its page, beside bb's own Browser and Terminal tabs",
+          "Ask bb to hide the sidebar while the page shows, for a page that wants the whole window. bb gives the sidebar back when the user leaves, and stops hiding it if they open it themselves",
         ],
         apiSymbols: ["PluginNavPanelRegistration"],
         firstParty: ["Automations", "Docs", "GitHub", "Tasks"],

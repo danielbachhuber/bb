@@ -23,6 +23,7 @@ import {
 import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlotMount";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import { Provider } from "jotai";
 import { Link, MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
@@ -41,6 +42,7 @@ const useThreadDetailBootstrapMock = vi.hoisted(() =>
 );
 
 const SIDEBAR_WIDTH_STORAGE_KEY = "bb.sidebar.width";
+const SIDEBAR_OPEN_STORAGE_KEY = "bb.sidebar.open";
 const APP_ROUTE = "/projects/proj_one/threads/thr_one?message=12#event-12";
 const SETTINGS_ROUTE = "/settings/providers/codex?tab=models#preferred";
 const PLUGINS_ROUTE = "/plugins/ui-patterns?tab=settings#source";
@@ -567,4 +569,146 @@ describe("AppLayout plugin overlay contexts", () => {
       expect(warnings).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("AppLayout plugin panel sidebar", () => {
+  const NOW_ROUTE = "/plugins/now/now";
+  const NOW_SUBPATH_ROUTE = "/plugins/now/now/today";
+  const WIKI_ROUTE = "/plugins/helm-wiki/wiki";
+
+  function PanelBody() {
+    return <div>Panel body</div>;
+  }
+
+  function registerPanels() {
+    setPluginSlotRegistrations(
+      "now",
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "now",
+            path: "now",
+            title: "Now",
+            icon: "Clock",
+            component: PanelBody,
+            experimental_sidebar: "collapsed",
+          },
+        ],
+      }),
+    );
+    setPluginSlotRegistrations(
+      "helm-wiki",
+      makePluginRegistrationSet({
+        navPanels: [
+          {
+            id: "wiki",
+            path: "wiki",
+            title: "Helm Wiki",
+            icon: "Book",
+            component: PanelBody,
+          },
+        ],
+      }),
+    );
+  }
+
+  function renderPanelLayout(initialPath: string, compact = false) {
+    const tree = (
+      <Provider>
+        <MemoryRouter initialEntries={[initialPath]}>
+          <AppCommandProvider>
+            <AppLayout>
+              <RouteContent />
+              <Link to={NOW_ROUTE}>Open Now</Link>
+              <Link to={NOW_SUBPATH_ROUTE}>Open Now today</Link>
+              <Link to={WIKI_ROUTE}>Open Wiki</Link>
+              <Link to="/">Open root</Link>
+            </AppLayout>
+          </AppCommandProvider>
+        </MemoryRouter>
+      </Provider>
+    );
+    return render(
+      compact ? (
+        <CompactViewportOverrideProvider isCompactViewport>
+          {tree}
+        </CompactViewportOverrideProvider>
+      ) : (
+        tree
+      ),
+    );
+  }
+
+  function sidebarToggle(): HTMLElement {
+    return screen.getByRole("button", { name: /^Toggle sidebar/ });
+  }
+
+  beforeEach(() => {
+    window.localStorage.setItem(SIDEBAR_OPEN_STORAGE_KEY, "true");
+    registerPanels();
+  });
+
+  it("hides the sidebar on a panel that asks for it and leaves other panels alone", () => {
+    renderPanelLayout(NOW_ROUTE);
+    expect(sidebarToggle().getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(screen.getByRole("link", { name: "Open Wiki" }));
+
+    expect(sidebarToggle().getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("restores the sidebar the user had once they leave the panel", () => {
+    renderPanelLayout("/");
+    expect(sidebarToggle().getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.click(screen.getByRole("link", { name: "Open Now" }));
+    expect(sidebarToggle().getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(screen.getByRole("link", { name: "Open root" }));
+    expect(sidebarToggle().getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("stops hiding the sidebar for the rest of a visit the user opens it in", () => {
+    renderPanelLayout(NOW_ROUTE);
+
+    fireEvent.click(sidebarToggle());
+    expect(sidebarToggle().getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.click(screen.getByRole("link", { name: "Open Now today" }));
+    expect(sidebarToggle().getAttribute("aria-expanded")).toBe("true");
+
+    fireEvent.click(screen.getByRole("link", { name: "Open root" }));
+    fireEvent.click(screen.getByRole("link", { name: "Open Now" }));
+    expect(sidebarToggle().getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("keeps the saved sidebar preference out of the panel's forced collapse", () => {
+    renderPanelLayout(NOW_ROUTE);
+
+    fireEvent.click(sidebarToggle());
+    fireEvent.click(sidebarToggle());
+
+    expect(sidebarToggle().getAttribute("aria-expanded")).toBe("false");
+    expect(window.localStorage.getItem(SIDEBAR_OPEN_STORAGE_KEY)).toBe("true");
+
+    fireEvent.click(screen.getByRole("link", { name: "Open root" }));
+    expect(sidebarToggle().getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("leaves the compact drawer to open and close on a collapsing panel", async () => {
+    renderPanelLayout(NOW_ROUTE, true);
+    const toggle = sidebarToggle();
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(toggle.getAttribute("aria-expanded")).toBe("true"),
+    );
+
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(toggle.getAttribute("aria-expanded")).toBe("false"),
+    );
+    expect(window.localStorage.getItem(SIDEBAR_OPEN_STORAGE_KEY)).toBe("true");
+  });
 });

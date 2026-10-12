@@ -664,7 +664,10 @@ zero-padding full-bleed body, including its scrolling; optional
 experimental_sidebarAccessory mounts a presentational live-value component at
 the trailing edge of the sidebar row on wide viewports, bounded to one short
 line, replaced visually by the host options button on hover/focus, and omitted
-on compact viewports),
+on compact viewports; optional experimental_sidebar: "collapsed" hides the app
+sidebar while the page shows, restores the user's own state when they leave,
+never writes the collapse into their saved preference, stops forcing it once
+they open the sidebar during a visit, and leaves the compact drawer alone),
 threadPanelAction
 (a thread-only entry in an existing thread's right-panel new-tab Actions list;
 it is never offered on root compose, and its run() can

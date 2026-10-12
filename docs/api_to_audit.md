@@ -1418,6 +1418,47 @@ unmounting. A crash hides only the accessory.
    short statuses, and decide whether a dedicated label prop or host-rendered
    status semantics are needed.
 
+## `PluginNavPanelRegistration.experimental_sidebar`
+
+**What it does.** Lets a nav panel ask BB what the app sidebar should do while
+its page is showing. `"collapsed"` hides the sidebar so the page can use the
+full window width; `"default"` (and an absent field) leaves it alone. The host
+keeps the forced collapse out of the user's saved sidebar preference: while the
+page is showing, sidebar toggles move a visit-local state instead, and leaving
+the page restores whatever the preference says. A visit is one panel, keyed by
+plugin id and panel id, so navigating between the page's own `subPath` routes
+stays in the same visit while leaving and coming back starts a new one, which
+collapses again. If the user opens the sidebar during a visit, the host stops
+forcing it for the rest of that visit. Compact viewports are unaffected: the
+drawer owns its own open state, so the forced value never reaches it. The mode
+also rides along in the remembered nav panel chrome, so a reload of the page
+collapses before the plugin frontend boots.
+
+**Audit before stabilizing.**
+
+1. **Scope.** The field names one piece of chrome. Decide whether a full-bleed
+   page wants a broader declaration (sidebar, title bar, right panel) behind
+   one option, before a second chrome field has to join this one.
+2. **Values.** Confirm an enum earns its shape over a boolean, and whether a
+   third value (an icon rail, say, or collapse-on-narrow-only) is wanted
+   before the names are fixed.
+3. **Visit semantics.** Confirm panel identity is the right visit boundary
+   against back and forward navigation, deep links into a `subPath`, and a
+   page opened in a split pane.
+4. **Preference isolation.** While on such a page the user cannot change their
+   saved sidebar preference at all, because toggles are visit-local. Confirm
+   that beats writing the preference and restoring it on exit.
+5. **Compact viewports.** The host relies on the drawer ignoring the desktop
+   open state rather than branching on the viewport. Confirm that holds when
+   the viewport crosses the breakpoint mid-visit.
+6. **Remembered chrome.** The mode is cached with the panel's title and icon,
+   so a stale entry can collapse the sidebar for a panel whose plugin has
+   stopped asking for it until frontends settle. Decide whether pre-boot
+   collapse is worth that window.
+7. **Trust.** Any installed plugin can hide BB's primary navigation on its own
+   page with one field. Decide whether that needs a user-visible setting or
+   per-plugin consent before the prefix drops.
+
 ## `PluginContentScriptContext.experimental_setThreadRowStatus`
 
 **Kept experimental (2026-08-22).** kept: consumed by the collapsed-section

@@ -577,6 +577,18 @@ export interface PluginNavPanelRegistration {
    */
   experimental_sidebarAccessory?: ComponentType;
   /**
+   * What BB's app sidebar does while this page is showing. `"default"` leaves
+   * the sidebar alone; `"collapsed"` hides it so the page can use the full
+   * window width. BB restores whatever sidebar state the user had when they
+   * leave the page and never writes the forced collapse into their saved
+   * sidebar preference. If the user opens the sidebar while on the page, BB
+   * stops hiding it for the rest of that visit. Compact viewports keep their
+   * drawer and are unaffected.
+   *
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_sidebar?: "default" | "collapsed";
+  /**
    * Optional component rendered on the right side of the shared title bar
    * (e.g. a sync button or a count). Contained separately from the body: a
    * throwing headerContent is hidden without breaking the title bar.

@@ -137,6 +137,37 @@ describe("usePluginNavPanelChrome", () => {
 });
 
 describe("useRememberPluginNavPanelChrome", () => {
+  it("remembers a panel's sidebar mode so a reload collapses before boot", () => {
+    act(() =>
+      setPluginSlotRegistrations(
+        "now",
+        registrations([
+          {
+            id: "now",
+            path: "now",
+            title: "Now",
+            icon: "Clock",
+            component: Body,
+            experimental_sidebar: "collapsed",
+          },
+        ]),
+      ),
+    );
+    renderHook(() => useRememberPluginNavPanelChrome());
+    act(() => markPluginFrontendsSettled());
+
+    expect(readLastKnownPluginNavPanelChrome()).toEqual([
+      {
+        pluginId: "now",
+        id: "now",
+        path: "now",
+        title: "Now",
+        icon: "Clock",
+        sidebar: "collapsed",
+      },
+    ]);
+  });
+
   it("preserves the complete cache until server startup and the final frontend load finish", () => {
     writeLastKnownPluginNavPanelChrome([TASKS, DOCS]);
     setServerPluginsStarting(true);
